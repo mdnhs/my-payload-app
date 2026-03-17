@@ -16,9 +16,28 @@
       "command": "npx",
       "args": ["shadcn@latest", "mcp"]
     },
+    "tailwind-v4-docs": {
+      "command": "npx",
+      "args": ["-y", "mcp-for-tailwind"]
+    },
+    "tailwindcss": {
+      "command": "npx",
+      "args": ["-y", "tailwindcss-mcp-server"]
+    },
+    "flowbite": {
+      "command": "npx",
+      "args": ["-y", "flowbite-mcp"]
+    },
     "mongodb": {
       "command": "npx",
       "args": ["-y", "mcp-mongo-server", "mongodb://127.0.0.1/my-payload-app"]
+    },
+    "Payload": {
+      "type": "http",
+      "url": "http://localhost:3000/api/mcp",
+      "headers": {
+        "Authorization": "Bearer API-KEY-HERE"
+      }
     }
   }
 }

@@ -11,7 +11,22 @@
       "Bash(git -C /Users/nazmulhasansourab/nazmulhsourab/my-payload-app branch -m main)",
       "Bash(git -C:*)",
       "Bash(git remote:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(pnpm add:*)",
+      "mcp__shadcn__get_add_command_for_items",
+      "Bash(pnpm dlx:*)",
+      "Bash(npx tsc:*)",
+      "Bash(ls:*)",
+      "WebFetch(domain:better-auth.com)",
+      "Bash(grep -r \"withMcpAuth\\\\|OAuthAccessToken\" /Users/nazmulhasansourab/nazmulhsourab/my-payload-app/node_modules/better-auth/dist/ --include=*.d.ts -l)",
+      "Bash(grep -r \"withMcpAuth\\\\|mcp\\\\b\" /Users/nazmulhasansourab/nazmulhsourab/my-payload-app/node_modules/better-auth/dist/ --include=*.d.ts -l)",
+      "WebFetch(domain:payloadcms.com)",
+      "WebSearch",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\(''''dependencies'''',{}\\).get\\(''''zod'''',''''not found''''\\), d.get\\(''''peerDependencies'''',{}\\).get\\(''''zod'''',''''not found''''\\)\\)\")",
+      "Bash(pnpm build:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

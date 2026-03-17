@@ -7,7 +7,23 @@ export const Users: CollectionConfig = {
   },
   auth: true,
   fields: [
-    // Email added by default
-    // Add more fields as needed
+    {
+      name: 'name',
+      type: 'text',
+      required: true,
+    },
+    {
+      name: 'role',
+      type: 'select',
+      required: true,
+      defaultValue: 'mentee',
+      options: [
+        { label: 'Mentor', value: 'mentor' },
+        { label: 'Mentee', value: 'mentee' },
+      ],
+      admin: {
+        description: 'Select the user role',
+      },
+    },
   ],
 }
