@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__mcp-registry__search_mcp_registry",
+      "Bash(git -C /Users/nazmulhasansourab/nazmulhsourab/my-payload-app status)",
+      "Bash(gh auth:*)",
+      "Bash(git --version)",
+      "mcp__github__create_repository",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "next-devtools"
+  ]
+}
