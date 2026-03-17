@@ -3,6 +3,22 @@
     "next-devtools": {
       "command": "npx",
       "args": ["-y", "next-devtools-mcp@latest"]
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+    },
+    "uml-diagrams": {
+      "command": "npx",
+      "args": ["-y", "uml-mcp-server"]
+    },
+    "shadcn": {
+      "command": "npx",
+      "args": ["shadcn@latest", "mcp"]
+    },
+    "mongodb": {
+      "command": "npx",
+      "args": ["-y", "mcp-mongo-server", "mongodb://127.0.0.1/my-payload-app"]
     }
   }
 }
