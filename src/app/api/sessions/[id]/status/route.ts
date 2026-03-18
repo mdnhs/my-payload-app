@@ -5,6 +5,10 @@ import config from '@payload-config'
 import { auth } from '@/lib/auth'
 
 // PATCH /api/sessions/[id]/status — update session status
+// New payment flow:
+//   Student books + pays immediately via Stripe → status = 'pending', paymentStatus = 'paid'
+//   Mentor accepts → status = 'confirmed'  (only allowed when paymentStatus = 'paid')
+//   Session completes → status = 'completed'  (mentor earns; mentor can then withdraw)
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -19,7 +23,8 @@ export async function PATCH(
   const body = await req.json()
   const { status } = body as { status: string }
 
-  if (!['confirmed', 'completed', 'cancelled'].includes(status)) {
+  const validStatuses = ['confirmed', 'completed', 'cancelled']
+  if (!validStatuses.includes(status)) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
   }
 
@@ -36,7 +41,6 @@ export async function PATCH(
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
 
-  // Check user is participant
   const mentorUserId = typeof existingSession.mentorUser === 'string'
     ? existingSession.mentorUser
     : existingSession.mentorUser?.id
@@ -48,29 +52,48 @@ export async function PATCH(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  // Only mentors can confirm; either can cancel; only mentors can complete
-  if (status === 'confirmed' && session.user.id !== mentorUserId) {
-    return NextResponse.json({ error: 'Only mentors can confirm sessions' }, { status: 403 })
+  const isMentor = session.user.id === mentorUserId
+
+  // pending → confirmed: only mentor, only when payment is done
+  if (status === 'confirmed') {
+    if (!isMentor) {
+      return NextResponse.json({ error: 'Only mentors can confirm sessions' }, { status: 403 })
+    }
+    if (existingSession.status !== 'pending') {
+      return NextResponse.json({ error: 'Can only confirm pending sessions' }, { status: 400 })
+    }
+    if (existingSession.paymentStatus !== 'paid') {
+      return NextResponse.json(
+        { error: 'Cannot confirm — payment has not been received yet. Ask the student to complete payment first.' },
+        { status: 400 },
+      )
+    }
   }
-  if (status === 'completed' && session.user.id !== mentorUserId) {
-    return NextResponse.json({ error: 'Only mentors can mark sessions as completed' }, { status: 403 })
+
+  // confirmed → completed: only mentor
+  if (status === 'completed') {
+    if (!isMentor) {
+      return NextResponse.json({ error: 'Only mentors can mark sessions as completed' }, { status: 403 })
+    }
+    if (existingSession.status !== 'confirmed') {
+      return NextResponse.json({ error: 'Can only complete confirmed sessions' }, { status: 400 })
+    }
   }
 
   const updated = await payload.update({
     collection: 'sessions',
     id,
     overrideAccess: true,
-    data: { status },
+    data: {
+      status: status as 'pending' | 'awaiting_payment' | 'confirmed' | 'completed' | 'cancelled',
+    },
   })
 
-  // When session is completed, finalize the transaction (transfer to mentor)
+  // Session completed → credit earnings to mentor profile
   if (status === 'completed') {
     const transactions = await payload.find({
       collection: 'transactions',
-      where: {
-        session: { equals: id },
-        type: { equals: 'payment' },
-      },
+      where: { session: { equals: id }, type: { equals: 'payment' } },
       limit: 1,
       overrideAccess: true,
     })
@@ -84,20 +107,21 @@ export async function PATCH(
       })
     }
 
-    // Update mentor stats
+    // Update mentor stats + available withdrawal balance
     const mentorProfile = typeof existingSession.mentor === 'string'
       ? await payload.findByID({ collection: 'mentors', id: existingSession.mentor, overrideAccess: true })
       : existingSession.mentor
 
     if (mentorProfile) {
       const tx = transactions.docs[0]
+      const earned = (tx?.netAmount as number) || 0
       await payload.update({
         collection: 'mentors',
         id: mentorProfile.id,
         overrideAccess: true,
         data: {
           totalSessions: ((mentorProfile.totalSessions as number) || 0) + 1,
-          totalEarningsUSD: ((mentorProfile.totalEarningsUSD as number) || 0) + ((tx?.netAmount as number) || 0),
+          totalEarningsUSD: ((mentorProfile.totalEarningsUSD as number) || 0) + earned,
         },
       })
     }
@@ -114,20 +138,19 @@ export async function PATCH(
         overrideAccess: true,
         data: {
           totalSessions: ((menteeProfile.totalSessions as number) || 0) + 1,
-          totalHoursLearned: ((menteeProfile.totalHoursLearned as number) || 0) + ((existingSession.duration as number) || 60) / 60,
+          totalHoursLearned:
+            ((menteeProfile.totalHoursLearned as number) || 0) +
+            ((existingSession.duration as number) || 60) / 60,
         },
       })
     }
   }
 
-  // If cancelled, refund
+  // Cancelled → refund transaction record
   if (status === 'cancelled') {
     const transactions = await payload.find({
       collection: 'transactions',
-      where: {
-        session: { equals: id },
-        type: { equals: 'payment' },
-      },
+      where: { session: { equals: id }, type: { equals: 'payment' } },
       limit: 1,
       overrideAccess: true,
     })

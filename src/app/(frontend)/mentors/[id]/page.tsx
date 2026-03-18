@@ -509,7 +509,6 @@ export default async function MentorDetailPage({
               mentorId={id}
               mentorName={userName}
               hourlyRate={hourlyRate}
-              sessionDurations={sessionDurations}
               introCallFree={introCallFree}
             />
           </div>

@@ -35,7 +35,8 @@
       "Bash(mongosh:*)",
       "Bash(lsof:*)",
       "Bash(kill -9 786 4065)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(npm install:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

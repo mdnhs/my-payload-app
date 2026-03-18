@@ -25,6 +25,20 @@ interface SessionData {
   mentee: string | { id: string; user?: string | { name?: string } }
 }
 
+function getStatusStyle(status: string) {
+  switch (status) {
+    case 'pending': return { background: 'rgba(255,169,77,0.1)', border: '1px solid rgba(255,169,77,0.25)', color: '#FFA94D' }
+    case 'confirmed': return { background: 'rgba(201,255,71,0.1)', border: '1px solid rgba(201,255,71,0.25)', color: '#C9FF47' }
+    case 'completed': return { background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.2)', color: '#00E5FF' }
+    case 'cancelled': return { background: 'rgba(255,45,110,0.1)', border: '1px solid rgba(255,45,110,0.2)', color: '#FF2D6E' }
+    default: return {}
+  }
+}
+
+function formatTime(dateStr: string) {
+  return new Date(dateStr).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
 const css = `
   .chat-page {
     min-height: calc(100vh - 68px);
@@ -326,27 +340,24 @@ export default function ChatPage() {
 
   const fetchSession = useCallback(async () => {
     try {
-      const res = await fetch(`/api/sessions`)
+      const res = await fetch(`/api/sessions/${id}`)
       if (res.ok) {
-        const sessions = await res.json()
-        const found = sessions.find((s: SessionData) => s.id === id)
-        if (found) setSessionData(found)
+        const data = await res.json()
+        setSessionData(data)
       }
     } catch { /* ignore */ }
   }, [id])
 
   useEffect(() => {
-    if (!authLoading && !authSession?.user) {
+    if (authLoading) return
+    if (!authSession?.user) {
       router.push('/login')
       return
     }
-    if (!authLoading && authSession?.user) {
-      Promise.all([fetchSession(), fetchMessages()]).then(() => setLoading(false))
-      // Poll for new messages every 5 seconds
-      pollRef.current = setInterval(fetchMessages, 5000)
-      return () => {
-        if (pollRef.current) clearInterval(pollRef.current)
-      }
+    Promise.all([fetchSession(), fetchMessages()]).then(() => setLoading(false))
+    pollRef.current = setInterval(fetchMessages, 5000)
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
     }
   }, [authLoading, authSession, fetchSession, fetchMessages, router])
 
@@ -391,25 +402,15 @@ export default function ChatPage() {
   const mentorUserId = sessionData
     ? typeof sessionData.mentorUser === 'string' ? sessionData.mentorUser : sessionData.mentorUser?.id
     : null
-  const menteeUserId = sessionData
-    ? typeof sessionData.menteeUser === 'string' ? sessionData.menteeUser : sessionData.menteeUser?.id
-    : null
   const isMentor = userId === mentorUserId
+  // FR-20: chat only for confirmed sessions; FR-24: only within booking time window
+  const isConfirmed = sessionData?.status === 'confirmed'
+  const sessionStart = sessionData ? new Date(sessionData.scheduledAt).getTime() : 0
+  const sessionEnd = sessionData ? sessionStart + sessionData.duration * 60 * 1000 : 0
+  const now = Date.now()
+  const withinWindow = now >= sessionStart && now <= sessionEnd
+  const canSendMessage = isConfirmed && withinWindow
   const isActive = sessionData && !['cancelled', 'completed'].includes(sessionData.status)
-
-  function getStatusStyle(status: string) {
-    switch (status) {
-      case 'pending': return { background: 'rgba(255,169,77,0.1)', border: '1px solid rgba(255,169,77,0.25)', color: '#FFA94D' }
-      case 'confirmed': return { background: 'rgba(201,255,71,0.1)', border: '1px solid rgba(201,255,71,0.25)', color: '#C9FF47' }
-      case 'completed': return { background: 'rgba(0,229,255,0.1)', border: '1px solid rgba(0,229,255,0.2)', color: '#00E5FF' }
-      case 'cancelled': return { background: 'rgba(255,45,110,0.1)', border: '1px solid rgba(255,45,110,0.2)', color: '#FF2D6E' }
-      default: return {}
-    }
-  }
-
-  function formatTime(dateStr: string) {
-    return new Date(dateStr).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-  }
 
   if (loading || authLoading) {
     return (
@@ -458,10 +459,10 @@ export default function ChatPage() {
             {isMentor && sessionData.status === 'pending' && (
               <button
                 className="chat-action-btn chat-action-confirm"
-                onClick={() => updateStatus('confirmed')}
+                onClick={() => updateStatus('awaiting_payment')}
                 disabled={!!actionLoading}
               >
-                {actionLoading === 'confirmed' ? '...' : 'Accept'}
+                {actionLoading === 'awaiting_payment' ? '...' : 'Accept'}
               </button>
             )}
             {isMentor && sessionData.status === 'confirmed' && (
@@ -507,8 +508,8 @@ export default function ChatPage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input or ended bar */}
-        {isActive ? (
+        {/* Input or status bar */}
+        {canSendMessage ? (
           <form className="chat-input-bar" onSubmit={sendMessage}>
             <input
               className="chat-input"
@@ -526,9 +527,19 @@ export default function ChatPage() {
               {sending ? '...' : 'Send'}
             </button>
           </form>
-        ) : (
+        ) : isConfirmed && !withinWindow ? (
+          <div className="chat-ended-bar">
+            {now < sessionStart
+              ? `Chat opens at ${new Date(sessionStart).toLocaleTimeString()}.`
+              : 'Chat window closed — session time has passed. Messages are read-only.'}
+          </div>
+        ) : !isActive ? (
           <div className="chat-ended-bar">
             This session has been {sessionData.status}. Messages are read-only.
+          </div>
+        ) : (
+          <div className="chat-ended-bar">
+            Chat is only available for confirmed bookings.
           </div>
         )}
       </div>

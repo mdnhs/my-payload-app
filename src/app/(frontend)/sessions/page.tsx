@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useQueryState, parseAsStringLiteral } from 'nuqs'
 import { useSession } from '@/lib/auth-client'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 
 type TabKey = 'upcoming' | 'completed' | 'cancelled'
 
@@ -91,6 +92,7 @@ function getMenteeName(session: SessionDoc) {
 export default function SessionsPage() {
   const { data: authSession, isPending } = useSession()
   const user = authSession?.user as { id?: string; name?: string; role?: string } | null | undefined
+  const searchParams = useSearchParams()
 
   const [activeTab, setActiveTab] = useQueryState('tab', parseAsStringLiteral(['upcoming', 'completed', 'cancelled'] as const).withDefault('upcoming'))
   const [sessions, setSessions] = useState<SessionDoc[]>([])
@@ -100,6 +102,30 @@ export default function SessionsPage() {
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewSubmitting, setReviewSubmitting] = useState(false)
   const [actionLoading, setActionLoading] = useState('')
+  const [payingSessionId, setPayingSessionId] = useState('')
+  // unread counts keyed by sessionId
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
+  // mentor earnings / withdraw
+  const [mentorBalance, setMentorBalance] = useState<number | null>(null)
+  const [withdrawAmount, setWithdrawAmount] = useState('')
+  const [withdrawNote, setWithdrawNote] = useState('')
+  const [withdrawOpen, setWithdrawOpen] = useState(false)
+  const [withdrawing, setWithdrawing] = useState(false)
+  const [withdrawError, setWithdrawError] = useState('')
+  const [withdrawSuccess, setWithdrawSuccess] = useState('')
+  // availability management (mentor only)
+  const [slots, setSlots] = useState<{ id: string; startTime: string; endTime: string; isBooked: boolean }[]>([])
+  const [slotsLoading, setSlotsLoading] = useState(false)
+  const [showAddSlot, setShowAddSlot] = useState(false)
+  const [slotStartDT, setSlotStartDT] = useState('')
+  const [slotDurMin, setSlotDurMin] = useState(30)
+  const [slotError, setSlotError] = useState('')
+  const [slotSubmitting, setSlotSubmitting] = useState(false)
+  const [mentorProfileId, setMentorProfileId] = useState('')
+
+  // Show toast if redirected back from payment
+  const paymentStatus = searchParams.get('payment')
+  const bookedNew = searchParams.get('booked')
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -112,10 +138,164 @@ export default function SessionsPage() {
     setLoading(false)
   }, [])
 
+  const fetchMentorBalance = useCallback(async () => {
+    try {
+      const res = await fetch('/api/mentor/profile')
+      if (res.ok) {
+        const data = await res.json()
+        setMentorBalance(data.totalEarningsUSD ?? 0)
+        setMentorProfileId(data.id ?? '')
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  const fetchSlots = useCallback(async (profileId: string) => {
+    if (!profileId) return
+    setSlotsLoading(true)
+    try {
+      // fetch all upcoming slots (my own view — includes booked)
+      const res = await fetch(`/api/availability?mentorId=${profileId}&all=1`)
+      if (res.ok) setSlots(await res.json())
+    } catch { /* ignore */ }
+    setSlotsLoading(false)
+  }, [])
+
   useEffect(() => {
-    if (!isPending && user) fetchSessions()
-    else if (!isPending) setLoading(false)
-  }, [isPending, user, fetchSessions])
+    if (mentorProfileId) fetchSlots(mentorProfileId)
+  }, [mentorProfileId, fetchSlots])
+
+  const fetchUnreadCounts = useCallback(async (sessionList: SessionDoc[]) => {
+    const confirmed = sessionList.filter(s => s.status === 'confirmed')
+    const counts: Record<string, number> = {}
+    await Promise.all(
+      confirmed.map(async (s) => {
+        try {
+          const res = await fetch(`/api/sessions/${s.id}/messages/unread`)
+          if (res.ok) {
+            const data = await res.json()
+            counts[s.id] = data.unread ?? 0
+          }
+        } catch { /* ignore */ }
+      }),
+    )
+    setUnreadCounts(counts)
+  }, [])
+
+  useEffect(() => {
+    if (!isPending && user) {
+      // If redirected back from Stripe with success, verify payment before loading sessions
+      const payParam = searchParams.get('payment')
+      const sessionId = searchParams.get('id')
+      if (payParam === 'success' && sessionId) {
+        fetch('/api/payment/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bookingId: sessionId }),
+        }).finally(() => fetchSessions())
+      } else {
+        fetchSessions()
+      }
+      if ((user as { role?: string }).role === 'mentor') fetchMentorBalance()
+    } else if (!isPending) setLoading(false)
+  }, [isPending, user, fetchSessions, fetchMentorBalance, searchParams])
+
+  useEffect(() => {
+    if (sessions.length > 0) fetchUnreadCounts(sessions)
+  }, [sessions, fetchUnreadCounts])
+
+  async function handleAddSlot() {
+    setSlotError('')
+    if (!slotStartDT) { setSlotError('Select a start date and time.'); return }
+    if (slotDurMin < 10 || slotDurMin > 30) { setSlotError('Duration must be between 10 and 30 minutes.'); return }
+    const startTime = new Date(slotStartDT).toISOString()
+    const endTime = new Date(new Date(slotStartDT).getTime() + slotDurMin * 60000).toISOString()
+    setSlotSubmitting(true)
+    try {
+      const res = await fetch('/api/availability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ startTime, endTime }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setShowAddSlot(false)
+        setSlotStartDT(''); setSlotDurMin(30)
+        fetchSlots(mentorProfileId)
+      } else {
+        setSlotError(data.error || 'Failed to add slot.')
+      }
+    } catch { setSlotError('Network error.') }
+    setSlotSubmitting(false)
+  }
+
+  async function handleDeleteSlot(slotId: string) {
+    try {
+      await fetch(`/api/availability/${slotId}`, { method: 'DELETE' })
+      setSlots((prev) => prev.filter((s) => s.id !== slotId))
+    } catch { /* ignore */ }
+  }
+
+  // Try to verify existing Stripe payment first; if not paid, redirect to checkout
+  async function handleVerifyOrPay(sessionId: string) {
+    setPayingSessionId(sessionId)
+    try {
+      const verifyRes = await fetch('/api/payment/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: sessionId }),
+      })
+      const verifyData = await verifyRes.json()
+      if (verifyData.paid || verifyData.alreadyPaid) {
+        // Payment confirmed — just reload sessions
+        await fetchSessions()
+        setPayingSessionId('')
+        return
+      }
+    } catch { /* fall through to checkout */ }
+    // Not paid yet — go to Stripe
+    await handlePay(sessionId)
+  }
+
+  async function handlePay(sessionId: string) {
+    setPayingSessionId(sessionId)
+    try {
+      const res = await fetch('/api/payment/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: sessionId }),
+      })
+      const data = await res.json()
+      if (res.ok && data.url) {
+        window.location.href = data.url
+      }
+    } catch { /* ignore */ }
+    setPayingSessionId('')
+  }
+
+  async function handleWithdraw() {
+    setWithdrawError('')
+    setWithdrawSuccess('')
+    const amt = parseFloat(withdrawAmount)
+    if (!amt || amt <= 0) { setWithdrawError('Enter a valid amount.'); return }
+    setWithdrawing(true)
+    try {
+      const res = await fetch('/api/mentor/withdraw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: amt, note: withdrawNote }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setWithdrawSuccess(`Withdrawal request of $${amt.toFixed(2)} submitted successfully!`)
+        setWithdrawAmount('')
+        setWithdrawNote('')
+        fetchMentorBalance()
+      } else {
+        setWithdrawError(data.error || 'Failed to submit withdrawal.')
+      }
+    } catch { setWithdrawError('Network error. Please try again.') }
+    setWithdrawing(false)
+  }
 
   function categorize(s: SessionDoc): TabKey {
     if (s.status === 'completed') return 'completed'
@@ -153,6 +333,9 @@ export default function SessionsPage() {
     } catch { /* ignore */ }
     setActionLoading('')
   }
+
+  void paymentStatus
+  void bookedNew
 
   async function submitReview() {
     if (!reviewOpen) return
@@ -386,6 +569,164 @@ export default function SessionsPage() {
           font-family: var(--font-dm-sans), sans-serif; font-size: 0.95rem;
           color: rgba(245,245,245,0.35); margin-bottom: 20px;
         }
+        .sess-unread-badge {
+          display: inline-flex; align-items: center; justify-content: center;
+          min-width: 18px; height: 18px; padding: 0 5px;
+          background: #FF2D6E; border-radius: 100px;
+          font-family: var(--font-dm-sans), sans-serif;
+          font-size: 0.62rem; font-weight: 700; color: #fff; line-height: 1;
+        }
+        .sess-btn-pay {
+          background: rgba(0,229,255,0.12); border: 1px solid rgba(0,229,255,0.3);
+          color: #00E5FF;
+        }
+        .sess-btn-pay:hover { background: rgba(0,229,255,0.2); }
+        .sess-btn-withdraw {
+          background: rgba(167,139,250,0.12); border: 1px solid rgba(167,139,250,0.3);
+          color: #A78BFA;
+        }
+        .sess-btn-withdraw:hover { background: rgba(167,139,250,0.2); }
+        .earnings-panel {
+          background: rgba(167,139,250,0.05); border: 1px solid rgba(167,139,250,0.15);
+          border-radius: 20px; padding: 20px 24px; margin-bottom: 28px;
+          display: flex; align-items: center; justify-content: space-between; gap: 16px;
+          flex-wrap: wrap;
+        }
+        .earnings-panel-left { display: flex; flex-direction: column; gap: 4px; }
+        .earnings-panel-label {
+          font-family: var(--font-dm-sans), sans-serif; font-size: 0.7rem; font-weight: 700;
+          letter-spacing: 0.1em; text-transform: uppercase; color: rgba(167,139,250,0.6);
+        }
+        .earnings-panel-val {
+          font-family: var(--font-syne), sans-serif; font-weight: 800;
+          font-size: 1.9rem; color: #A78BFA; line-height: 1;
+        }
+        .earnings-panel-sub {
+          font-family: var(--font-dm-sans), sans-serif; font-size: 0.78rem;
+          color: rgba(245,245,245,0.35); margin-top: 2px;
+        }
+        .withdraw-modal {
+          background: #111; border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 24px; padding: 32px; width: 100%; max-width: 420px;
+          box-shadow: 0 32px 80px rgba(0,0,0,0.6);
+          animation: modal-in 0.22s cubic-bezier(0.16,1,0.3,1) both;
+        }
+        .withdraw-title {
+          font-family: var(--font-syne), sans-serif; font-weight: 800;
+          font-size: 1.2rem; color: #F5F5F5; margin-bottom: 6px;
+        }
+        .withdraw-sub {
+          font-family: var(--font-dm-sans), sans-serif; font-size: 0.85rem;
+          color: rgba(245,245,245,0.4); margin-bottom: 20px;
+        }
+        .withdraw-input {
+          width: 100%; background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
+          padding: 11px 14px; font-family: var(--font-dm-sans), sans-serif;
+          font-size: 0.9rem; color: #F5F5F5; outline: none;
+          transition: border-color 0.2s; box-sizing: border-box; margin-bottom: 12px;
+        }
+        .withdraw-input:focus { border-color: rgba(167,139,250,0.5); }
+        .withdraw-input::placeholder { color: rgba(245,245,245,0.2); }
+        .withdraw-error {
+          font-family: var(--font-dm-sans), sans-serif; font-size: 0.8rem;
+          color: #FF2D6E; background: rgba(255,45,110,0.08);
+          border: 1px solid rgba(255,45,110,0.2); border-radius: 10px;
+          padding: 10px 14px; margin-bottom: 14px;
+        }
+        .withdraw-success {
+          font-family: var(--font-dm-sans), sans-serif; font-size: 0.82rem;
+          color: #C9FF47; background: rgba(201,255,71,0.08);
+          border: 1px solid rgba(201,255,71,0.2); border-radius: 10px;
+          padding: 10px 14px; margin-bottom: 14px;
+        }
+        .sess-payment-pending-badge {
+          font-family: var(--font-dm-sans), sans-serif; font-size: 0.68rem; font-weight: 600;
+          color: rgba(255,169,77,0.7); background: rgba(255,169,77,0.06);
+          border: 1px solid rgba(255,169,77,0.15); border-radius: 8px;
+          padding: 4px 10px; margin-top: 8px; display: inline-block;
+        }
+        /* ── Availability panel ── */
+        .avail-panel {
+          background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.07);
+          border-radius: 20px; padding: 20px 24px; margin-bottom: 28px;
+        }
+        .avail-header {
+          display: flex; align-items: center; justify-content: space-between;
+          margin-bottom: 16px; flex-wrap: wrap; gap: 10px;
+        }
+        .avail-title {
+          font-family: var(--font-syne), sans-serif; font-weight: 700;
+          font-size: 0.95rem; color: #F5F5F5;
+        }
+        .avail-subtitle {
+          font-family: var(--font-dm-sans), sans-serif; font-size: 0.75rem;
+          color: rgba(245,245,245,0.35); margin-top: 2px;
+        }
+        .avail-slot-list { display: flex; flex-direction: column; gap: 8px; }
+        .avail-slot {
+          display: flex; align-items: center; justify-content: space-between;
+          background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
+          border-radius: 12px; padding: 10px 14px; gap: 12px;
+        }
+        .avail-slot-info { flex: 1; }
+        .avail-slot-day {
+          font-family: var(--font-dm-sans), sans-serif; font-size: 0.72rem; font-weight: 700;
+          letter-spacing: 0.05em; text-transform: uppercase; color: rgba(245,245,245,0.35);
+        }
+        .avail-slot-time {
+          font-family: var(--font-dm-sans), sans-serif; font-size: 0.88rem; font-weight: 600;
+          color: #F5F5F5; margin-top: 2px;
+        }
+        .avail-slot-dur {
+          font-family: var(--font-dm-sans), sans-serif; font-size: 0.72rem;
+          color: rgba(245,245,245,0.4); margin-top: 2px;
+        }
+        .avail-slot-booked {
+          font-family: var(--font-dm-sans), sans-serif; font-size: 0.65rem; font-weight: 700;
+          letter-spacing: 0.06em; text-transform: uppercase; color: #C9FF47;
+          background: rgba(201,255,71,0.08); border: 1px solid rgba(201,255,71,0.2);
+          border-radius: 100px; padding: 2px 10px;
+        }
+        .avail-del-btn {
+          background: transparent; border: 1px solid rgba(255,45,110,0.2);
+          color: rgba(255,45,110,0.5); border-radius: 8px; padding: 5px 10px;
+          font-family: var(--font-dm-sans), sans-serif; font-size: 0.72rem;
+          font-weight: 700; cursor: pointer; transition: all 0.18s; flex-shrink: 0;
+        }
+        .avail-del-btn:hover { border-color: #FF2D6E; color: #FF2D6E; background: rgba(255,45,110,0.06); }
+        .avail-empty {
+          font-family: var(--font-dm-sans), sans-serif; font-size: 0.83rem;
+          color: rgba(245,245,245,0.3); text-align: center; padding: 14px 0;
+        }
+        .avail-add-form {
+          margin-top: 16px; padding: 16px;
+          background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
+          border-radius: 14px; display: flex; flex-direction: column; gap: 12px;
+        }
+        .avail-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .avail-form-field { display: flex; flex-direction: column; gap: 4px; }
+        .avail-form-label {
+          font-family: var(--font-dm-sans), sans-serif; font-size: 0.66rem; font-weight: 700;
+          letter-spacing: 0.07em; text-transform: uppercase; color: rgba(245,245,245,0.3);
+        }
+        .avail-form-input {
+          background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 10px; padding: 9px 12px;
+          font-family: var(--font-dm-sans), sans-serif; font-size: 0.85rem;
+          color: #F5F5F5; outline: none; width: 100%; box-sizing: border-box;
+          transition: border-color 0.2s; colorScheme: dark;
+        }
+        .avail-form-input:focus { border-color: rgba(201,255,71,0.4); }
+        .avail-form-actions { display: flex; gap: 8px; }
+        .avail-form-error {
+          font-family: var(--font-dm-sans), sans-serif; font-size: 0.78rem;
+          color: #FF2D6E; background: rgba(255,45,110,0.08);
+          border: 1px solid rgba(255,45,110,0.15); border-radius: 8px; padding: 8px 12px;
+        }
+        @media (max-width: 520px) {
+          .avail-form-row { grid-template-columns: 1fr; }
+        }
         @media (max-width: 640px) {
           .sess-summary { grid-template-columns: repeat(2, 1fr); }
           .sess-tabs { width: 100%; justify-content: space-between; }
@@ -416,6 +757,126 @@ export default function SessionsPage() {
             </div>
           ))}
         </div>
+
+        {/* Mentor earnings panel */}
+        {user?.role === 'mentor' && mentorBalance !== null && (
+          <div className="earnings-panel">
+            <div className="earnings-panel-left">
+              <div className="earnings-panel-label">Available Balance</div>
+              <div className="earnings-panel-val">${mentorBalance.toFixed(2)}</div>
+              <div className="earnings-panel-sub">Earnings from completed sessions</div>
+            </div>
+            <button
+              className="sess-btn sess-btn-withdraw"
+              onClick={() => { setWithdrawOpen(true); setWithdrawError(''); setWithdrawSuccess('') }}
+              disabled={mentorBalance <= 0}
+            >
+              💸 Withdraw
+            </button>
+          </div>
+        )}
+
+        {/* Mentor availability management */}
+        {user?.role === 'mentor' && mentorProfileId && (
+          <div className="avail-panel">
+            <div className="avail-header">
+              <div>
+                <div className="avail-title">My Availability</div>
+                <div className="avail-subtitle">Slots mentees can book from your profile</div>
+              </div>
+              <button
+                className="sess-btn sess-btn-ghost"
+                style={{ fontSize: '0.8rem', padding: '7px 16px' }}
+                onClick={() => { setShowAddSlot((v) => !v); setSlotError(''); setSlotStartDT(''); setSlotDurMin(30) }}
+              >
+                {showAddSlot ? '✕ Cancel' : '+ Add Slot'}
+              </button>
+            </div>
+
+            {showAddSlot && (
+              <div className="avail-add-form">
+                <div className="avail-form-row">
+                  <div className="avail-form-field">
+                    <label className="avail-form-label">Start Date & Time</label>
+                    <input
+                      className="avail-form-input"
+                      type="datetime-local"
+                      value={slotStartDT}
+                      onChange={(e) => setSlotStartDT(e.target.value)}
+                      min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+                      step="600"
+                      style={{ colorScheme: 'dark' }}
+                    />
+                  </div>
+                  <div className="avail-form-field">
+                    <label className="avail-form-label">Duration (min)</label>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {[10, 15, 20, 25, 30].map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => setSlotDurMin(d)}
+                          style={{
+                            flex: 1, minWidth: 38,
+                            padding: '9px 4px',
+                            borderRadius: 10,
+                            border: slotDurMin === d ? '1px solid #C9FF47' : '1px solid rgba(255,255,255,0.1)',
+                            background: slotDurMin === d ? 'rgba(201,255,71,0.1)' : 'rgba(255,255,255,0.04)',
+                            color: slotDurMin === d ? '#C9FF47' : 'rgba(245,245,245,0.55)',
+                            fontFamily: 'var(--font-dm-sans),sans-serif',
+                            fontSize: '0.82rem', fontWeight: 700,
+                            cursor: 'pointer', transition: 'all 0.15s',
+                          }}
+                        >
+                          {d}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {slotError && <div className="avail-form-error">{slotError}</div>}
+                <div className="avail-form-actions">
+                  <button
+                    className="sess-btn sess-btn-primary"
+                    style={{ padding: '8px 20px' }}
+                    onClick={handleAddSlot}
+                    disabled={slotSubmitting}
+                  >
+                    {slotSubmitting ? 'Adding…' : `Add ${slotDurMin}-min Slot`}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="avail-slot-list" style={{ marginTop: showAddSlot ? 12 : 0 }}>
+              {slotsLoading ? (
+                <div className="avail-empty">Loading…</div>
+              ) : slots.length === 0 ? (
+                <div className="avail-empty">No upcoming slots. Add one above.</div>
+              ) : slots.map((slot) => {
+                const dur = Math.round((new Date(slot.endTime).getTime() - new Date(slot.startTime).getTime()) / 60000)
+                const d = new Date(slot.startTime)
+                const day = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+                const timeRange = `${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} – ${new Date(slot.endTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+                return (
+                  <div key={slot.id} className="avail-slot">
+                    <div className="avail-slot-info">
+                      <div className="avail-slot-day">{day}</div>
+                      <div className="avail-slot-time">{timeRange}</div>
+                      <div className="avail-slot-dur">{dur} min</div>
+                    </div>
+                    {slot.isBooked ? (
+                      <span className="avail-slot-booked">Booked</span>
+                    ) : (
+                      <button className="avail-del-btn" onClick={() => handleDeleteSlot(slot.id)}>Delete</button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="sess-tabs">
           {TABS.map((t) => (
@@ -472,6 +933,11 @@ export default function SessionsPage() {
                           Pending
                         </span>
                       )}
+                      {s.status === 'awaiting_payment' && (
+                        <span className="sess-status-pill" style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.25)', color: '#00E5FF' }}>
+                          Awaiting Payment
+                        </span>
+                      )}
                       {s.status === 'confirmed' && (
                         <span className="sess-status-pill" style={{ background: 'rgba(201,255,71,0.12)', border: '1px solid rgba(201,255,71,0.22)', color: '#C9FF47' }}>
                           Confirmed
@@ -523,21 +989,48 @@ export default function SessionsPage() {
                 {/* Actions */}
                 {(categorize(s) === 'upcoming' || s.status === 'completed') && (
                   <div className="sess-card-actions">
-                    {/* Chat link for active sessions */}
-                    {categorize(s) === 'upcoming' && (
-                      <Link href={`/sessions/${s.id}/chat`} className="sess-btn sess-btn-primary">
+                    {/* Chat link — only for confirmed sessions (FR-20) */}
+                    {s.status === 'confirmed' && (
+                      <Link href={`/sessions/${s.id}/chat`} className="sess-btn sess-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         💬 Chat
+                        {/* FR-23: unread indicator */}
+                        {(unreadCounts[s.id] ?? 0) > 0 && (
+                          <span className="sess-unread-badge">{unreadCounts[s.id]}</span>
+                        )}
                       </Link>
                     )}
 
-                    {/* Mentor: accept pending sessions */}
-                    {isMyMentor && s.status === 'pending' && (
+                    {/* Video call — only for confirmed sessions (FR-25) */}
+                    {s.status === 'confirmed' && (
+                      <Link href={`/sessions/${s.id}/call`} className="sess-btn sess-btn-ghost">
+                        📹 Video Call
+                      </Link>
+                    )}
+
+                    {/* Mentor: confirm pending session (payment already collected at booking) */}
+                    {isMyMentor && s.status === 'pending' && s.paymentStatus === 'paid' && (
                       <button
                         className="sess-btn sess-btn-confirm"
                         onClick={() => handleStatusChange(s.id, 'confirmed')}
                         disabled={!!actionLoading}
                       >
-                        {actionLoading === `${s.id}-confirmed` ? '...' : '✓ Accept'}
+                        {actionLoading === `${s.id}-confirmed` ? '...' : '✓ Accept & Confirm'}
+                      </button>
+                    )}
+
+                    {/* Mentor: pending but payment not yet received — show info */}
+                    {isMyMentor && s.status === 'pending' && s.paymentStatus !== 'paid' && (
+                      <span className="sess-payment-pending-badge">⏳ Awaiting student payment</span>
+                    )}
+
+                    {/* Mentee: pending + unpaid — verify first, then redirect to Stripe if still unpaid */}
+                    {!isMyMentor && s.status === 'pending' && s.paymentStatus !== 'paid' && (
+                      <button
+                        className="sess-btn sess-btn-pay"
+                        onClick={() => handleVerifyOrPay(s.id)}
+                        disabled={payingSessionId === s.id}
+                      >
+                        {payingSessionId === s.id ? 'Checking...' : '💳 Complete Payment'}
                       </button>
                     )}
 
@@ -564,7 +1057,7 @@ export default function SessionsPage() {
                       </button>
                     )}
 
-                    {/* Completed: review + book again */}
+                    {/* Completed: review + view chat */}
                     {s.status === 'completed' && !s.rating && !isMentor(s) && (
                       <button
                         className="sess-btn sess-btn-primary"
@@ -590,6 +1083,59 @@ export default function SessionsPage() {
           })}
         </div>
       </div>
+
+      {/* Withdraw modal */}
+      {withdrawOpen && (
+        <div className="review-overlay" onClick={() => setWithdrawOpen(false)}>
+          <div className="withdraw-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="withdraw-title">Withdraw Earnings</div>
+            <div className="withdraw-sub">
+              Available: <strong style={{ color: '#A78BFA' }}>${(mentorBalance ?? 0).toFixed(2)}</strong>
+            </div>
+            {withdrawError && <div className="withdraw-error">{withdrawError}</div>}
+            {withdrawSuccess && <div className="withdraw-success">{withdrawSuccess}</div>}
+            {!withdrawSuccess && (
+              <>
+                <input
+                  className="withdraw-input"
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  max={mentorBalance ?? undefined}
+                  placeholder="Amount (USD)"
+                  value={withdrawAmount}
+                  onChange={(e) => setWithdrawAmount(e.target.value)}
+                />
+                <input
+                  className="withdraw-input"
+                  type="text"
+                  placeholder="Note (optional)"
+                  value={withdrawNote}
+                  onChange={(e) => setWithdrawNote(e.target.value)}
+                />
+                <div className="review-actions" style={{ marginTop: 4 }}>
+                  <button
+                    className="sess-btn sess-btn-withdraw"
+                    style={{ flex: 1, justifyContent: 'center', padding: '12px 20px' }}
+                    onClick={handleWithdraw}
+                    disabled={withdrawing}
+                  >
+                    {withdrawing ? 'Submitting...' : '💸 Request Withdrawal'}
+                  </button>
+                  <button className="sess-btn sess-btn-ghost" onClick={() => setWithdrawOpen(false)}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+            {withdrawSuccess && (
+              <button className="sess-btn sess-btn-ghost" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setWithdrawOpen(false)}>
+                Close
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Review modal */}
       {reviewOpen && (

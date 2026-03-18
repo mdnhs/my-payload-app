@@ -12,6 +12,9 @@ import { Mentees } from './collections/Mentees'
 import { Sessions } from './collections/Sessions'
 import { Messages } from './collections/Messages'
 import { Transactions } from './collections/Transactions'
+import { Availability } from './collections/Availability'
+import { CallSessions } from './collections/CallSessions'
+import { Withdrawals } from './collections/Withdrawals'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -23,7 +26,7 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
   },
-  collections: [Users, Media, Mentors, Mentees, Sessions, Messages, Transactions],
+  collections: [Users, Media, Mentors, Mentees, Sessions, Messages, Transactions, Availability, CallSessions, Withdrawals],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {

@@ -74,6 +74,7 @@ export const Sessions: CollectionConfig = {
       defaultValue: 'pending',
       options: [
         { label: 'Pending', value: 'pending' },
+        { label: 'Awaiting Payment', value: 'awaiting_payment' },
         { label: 'Confirmed', value: 'confirmed' },
         { label: 'Completed', value: 'completed' },
         { label: 'Cancelled', value: 'cancelled' },
@@ -98,14 +99,31 @@ export const Sessions: CollectionConfig = {
       },
     },
     {
+      name: 'paymentMethod',
+      type: 'select',
+      options: [
+        { label: 'Stripe', value: 'stripe' },
+        { label: 'SSLCommerz', value: 'sslcommerz' },
+        { label: 'bKash', value: 'bkash' },
+      ],
+    },
+    {
       name: 'paymentStatus',
       type: 'select',
-      defaultValue: 'paid',
+      defaultValue: 'pending',
       options: [
-        { label: 'Paid', value: 'paid' },
         { label: 'Pending', value: 'pending' },
+        { label: 'Paid', value: 'paid' },
         { label: 'Refunded', value: 'refunded' },
+        { label: 'Failed', value: 'failed' },
       ],
+    },
+    {
+      name: 'transactionId',
+      type: 'text',
+      admin: {
+        description: 'Payment gateway transaction ID (from webhook)',
+      },
     },
     {
       name: 'meetingLink',

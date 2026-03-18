@@ -75,6 +75,9 @@ export interface Config {
     sessions: Session;
     messages: Message;
     transactions: Transaction;
+    availability: Availability;
+    'call-sessions': CallSession;
+    withdrawals: Withdrawal;
     'payload-mcp-api-keys': PayloadMcpApiKey;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
@@ -90,6 +93,9 @@ export interface Config {
     sessions: SessionsSelect<false> | SessionsSelect<true>;
     messages: MessagesSelect<false> | MessagesSelect<true>;
     transactions: TransactionsSelect<false> | TransactionsSelect<true>;
+    availability: AvailabilitySelect<false> | AvailabilitySelect<true>;
+    'call-sessions': CallSessionsSelect<false> | CallSessionsSelect<true>;
+    withdrawals: WithdrawalsSelect<false> | WithdrawalsSelect<true>;
     'payload-mcp-api-keys': PayloadMcpApiKeysSelect<false> | PayloadMcpApiKeysSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -495,7 +501,7 @@ export interface Session {
    * Duration in minutes
    */
   duration: number;
-  status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
+  status: 'pending' | 'awaiting_payment' | 'confirmed' | 'completed' | 'cancelled';
   /**
    * Rate snapshot at booking time (USD)
    */
@@ -504,7 +510,12 @@ export interface Session {
    * Total charged to mentee (USD)
    */
   amountCharged: number;
-  paymentStatus?: ('paid' | 'pending' | 'refunded') | null;
+  paymentMethod?: ('stripe' | 'sslcommerz' | 'bkash') | null;
+  paymentStatus?: ('pending' | 'paid' | 'refunded' | 'failed') | null;
+  /**
+   * Payment gateway transaction ID (from webhook)
+   */
+  transactionId?: string | null;
   meetingLink?: string | null;
   notes?: string | null;
   rating?: number | null;
@@ -539,6 +550,80 @@ export interface Transaction {
   platformFee: number;
   netAmount: number;
   status: 'pending' | 'completed' | 'refunded';
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Mentor availability slots. Each document is a bookable time window.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "availability".
+ */
+export interface Availability {
+  id: string;
+  /**
+   * The mentor profile this slot belongs to.
+   */
+  mentor: string | Mentor;
+  /**
+   * Start of available window.
+   */
+  startTime: string;
+  /**
+   * End of available window.
+   */
+  endTime: string;
+  /**
+   * True once a confirmed booking is attached to this slot.
+   */
+  isBooked?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * WebRTC call session records. Created when a call starts, updated when it ends.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "call-sessions".
+ */
+export interface CallSession {
+  id: string;
+  /**
+   * The booking this call is associated with.
+   */
+  booking: string | Session;
+  /**
+   * When the call was initiated.
+   */
+  startedAt: string;
+  /**
+   * When the call ended. Null if still active.
+   */
+  endedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Mentor payout/withdrawal requests after session completion.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "withdrawals".
+ */
+export interface Withdrawal {
+  id: string;
+  /**
+   * The mentor requesting the withdrawal.
+   */
+  mentorUser: string | User;
+  /**
+   * Amount requested in USD.
+   */
+  amount: number;
+  status?: ('pending' | 'processing' | 'completed' | 'rejected') | null;
+  /**
+   * Optional note from mentor or admin.
+   */
+  note?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -702,6 +787,18 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'transactions';
         value: string | Transaction;
+      } | null)
+    | ({
+        relationTo: 'availability';
+        value: string | Availability;
+      } | null)
+    | ({
+        relationTo: 'call-sessions';
+        value: string | CallSession;
+      } | null)
+    | ({
+        relationTo: 'withdrawals';
+        value: string | Withdrawal;
       } | null)
     | ({
         relationTo: 'payload-mcp-api-keys';
@@ -896,7 +993,9 @@ export interface SessionsSelect<T extends boolean = true> {
   status?: T;
   hourlyRate?: T;
   amountCharged?: T;
+  paymentMethod?: T;
   paymentStatus?: T;
+  transactionId?: T;
   meetingLink?: T;
   notes?: T;
   rating?: T;
@@ -929,6 +1028,41 @@ export interface TransactionsSelect<T extends boolean = true> {
   platformFee?: T;
   netAmount?: T;
   status?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "availability_select".
+ */
+export interface AvailabilitySelect<T extends boolean = true> {
+  mentor?: T;
+  startTime?: T;
+  endTime?: T;
+  isBooked?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "call-sessions_select".
+ */
+export interface CallSessionsSelect<T extends boolean = true> {
+  booking?: T;
+  startedAt?: T;
+  endedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "withdrawals_select".
+ */
+export interface WithdrawalsSelect<T extends boolean = true> {
+  mentorUser?: T;
+  amount?: T;
+  status?: T;
+  note?: T;
   updatedAt?: T;
   createdAt?: T;
 }

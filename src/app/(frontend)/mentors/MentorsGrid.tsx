@@ -126,6 +126,38 @@ const css = `
     box-shadow: 0 0 40px rgba(201,255,71,0.4);
   }
 
+  /* ── PRICE RANGE ── */
+  .fm-price-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 1.5rem;
+    animation: ms-reveal 0.6s ease-out 0.18s both;
+  }
+
+  .fm-price-label {
+    font-family: var(--font-dm-sans), sans-serif;
+    font-size: 0.78rem; font-weight: 600;
+    color: rgba(245,245,245,0.4); white-space: nowrap;
+  }
+
+  .fm-price-input {
+    width: 90px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-family: var(--font-dm-sans), sans-serif;
+    font-size: 0.85rem; color: #F5F5F5; outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .fm-price-input::placeholder { color: rgba(245,245,245,0.2); }
+  .fm-price-input:focus { border-color: rgba(201,255,71,0.4); }
+
+  .fm-price-sep {
+    font-family: var(--font-dm-sans), sans-serif;
+    font-size: 0.78rem; color: rgba(245,245,245,0.3);
+  }
+
   /* ── FILTER PILLS ── */
   .fm-filters {
     display: flex; gap: 8px; flex-wrap: wrap;
@@ -516,6 +548,9 @@ export default function MentorsGrid({ mentors }: { mentors: MentorRow[] }) {
   const [activeCountry, setActiveCountry] = useQueryState('country', parseAsString.withDefault('all').withOptions({ shallow: false }))
   const [search, setSearch] = useQueryState('q', parseAsString.withDefault('').withOptions({ shallow: false }))
   const [sort, setSort] = useQueryState('sort', parseAsString.withDefault('top-rated').withOptions({ shallow: false }))
+  // FR-10: price range filter via URL params
+  const [priceMin, setPriceMin] = useQueryState('priceMin', parseAsString.withDefault('').withOptions({ shallow: false }))
+  const [priceMax, setPriceMax] = useQueryState('priceMax', parseAsString.withDefault('').withOptions({ shallow: false }))
 
   const filtered = useMemo(() => {
     let list = mentors
@@ -531,12 +566,18 @@ export default function MentorsGrid({ mentors }: { mentors: MentorRow[] }) {
           m.services.some((s) => (SERVICE_LABELS[s] ?? s).toLowerCase().includes(q)),
       )
     }
+    // FR-10: price range filter
+    const minVal = priceMin !== '' ? Number(priceMin) : null
+    const maxVal = priceMax !== '' ? Number(priceMax) : null
+    if (minVal !== null && !isNaN(minVal)) list = list.filter((m) => m.hourlyRate >= minVal)
+    if (maxVal !== null && !isNaN(maxVal)) list = list.filter((m) => m.hourlyRate <= maxVal)
+
     if (sort === 'top-rated') list = [...list].sort((a, b) => b.rating - a.rating)
     else if (sort === 'most-reviewed') list = [...list].sort((a, b) => b.reviewCount - a.reviewCount)
     else if (sort === 'price-low') list = [...list].sort((a, b) => a.hourlyRate - b.hourlyRate)
     else if (sort === 'price-high') list = [...list].sort((a, b) => b.hourlyRate - a.hourlyRate)
     return list
-  }, [activeCountry, search, sort, mentors])
+  }, [activeCountry, search, sort, mentors, priceMin, priceMax])
 
   return (
     <>
@@ -570,6 +611,28 @@ export default function MentorsGrid({ mentors }: { mentors: MentorRow[] }) {
               />
             </div>
             <button className="fm-search-btn">Search</button>
+          </div>
+
+          {/* FR-10: Price range filter — synced with URL via nuqs */}
+          <div className="fm-price-row">
+            <span className="fm-price-label">Price ($/hr):</span>
+            <input
+              type="number"
+              className="fm-price-input"
+              placeholder="Min"
+              min="0"
+              value={priceMin}
+              onChange={(e) => setPriceMin(e.target.value)}
+            />
+            <span className="fm-price-sep">—</span>
+            <input
+              type="number"
+              className="fm-price-input"
+              placeholder="Max"
+              min="0"
+              value={priceMax}
+              onChange={(e) => setPriceMax(e.target.value)}
+            />
           </div>
 
           {/* Country filters */}
