@@ -1,0 +1,120 @@
+export const SUBJECTS = [
+  // STEM
+  'Computer Science',
+  'Software Engineering',
+  'Data Science',
+  'Artificial Intelligence',
+  'Cybersecurity',
+  'Information Technology',
+  'Electrical Engineering',
+  'Mechanical Engineering',
+  'Civil Engineering',
+  'Chemical Engineering',
+  'Biomedical Engineering',
+  'Aerospace Engineering',
+  'Environmental Engineering',
+  'Industrial Engineering',
+  'Materials Science',
+  'Robotics',
+  'Mathematics',
+  'Statistics',
+  'Physics',
+  'Chemistry',
+  'Biology',
+  'Biotechnology',
+  'Bioinformatics',
+  'Geology',
+  'Astronomy',
+
+  // Business & Economics
+  'Business Administration',
+  'Finance',
+  'Accounting',
+  'Marketing',
+  'Management',
+  'International Business',
+  'Entrepreneurship',
+  'Supply Chain Management',
+  'Human Resource Management',
+  'Economics',
+  'Business Analytics',
+
+  // Social Sciences
+  'Psychology',
+  'Sociology',
+  'Political Science',
+  'International Relations',
+  'Public Policy',
+  'Anthropology',
+  'Geography',
+  'Criminology',
+  'Social Work',
+  'Development Studies',
+
+  // Arts & Humanities
+  'English Literature',
+  'History',
+  'Philosophy',
+  'Linguistics',
+  'Fine Arts',
+  'Graphic Design',
+  'Music',
+  'Film Studies',
+  'Theater Arts',
+  'Creative Writing',
+  'Cultural Studies',
+  'Religious Studies',
+  'Archaeology',
+
+  // Health & Medicine
+  'Medicine (MBBS/MD)',
+  'Dentistry',
+  'Pharmacy',
+  'Nursing',
+  'Public Health',
+  'Nutrition & Dietetics',
+  'Physiotherapy',
+  'Veterinary Science',
+  'Biomedical Sciences',
+  'Health Informatics',
+
+  // Law & Education
+  'Law (LLB/LLM)',
+  'Education',
+  'TESOL / Applied Linguistics',
+  'Special Education',
+  'Curriculum & Instruction',
+
+  // Architecture & Design
+  'Architecture',
+  'Urban Planning',
+  'Interior Design',
+  'Landscape Architecture',
+  'Industrial Design',
+  'Fashion Design',
+  'UX/UI Design',
+
+  // Communication & Media
+  'Journalism',
+  'Mass Communication',
+  'Public Relations',
+  'Digital Media',
+  'Advertising',
+
+  // Agriculture & Environment
+  'Agriculture',
+  'Food Science',
+  'Environmental Science',
+  'Forestry',
+  'Marine Biology',
+  'Sustainability Studies',
+
+  // Other
+  'Hospitality & Tourism',
+  'Sports Science',
+  'Library Science',
+  'Aviation',
+  'Other',
+] as const
+
+export type Subject = (typeof SUBJECTS)[number]

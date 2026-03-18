@@ -70,6 +70,11 @@ export interface Config {
   collections: {
     users: User;
     media: Media;
+    mentors: Mentor;
+    mentees: Mentee;
+    sessions: Session;
+    messages: Message;
+    transactions: Transaction;
     'payload-mcp-api-keys': PayloadMcpApiKey;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
@@ -80,6 +85,11 @@ export interface Config {
   collectionsSelect: {
     users: UsersSelect<false> | UsersSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
+    mentors: MentorsSelect<false> | MentorsSelect<true>;
+    mentees: MenteesSelect<false> | MenteesSelect<true>;
+    sessions: SessionsSelect<false> | SessionsSelect<true>;
+    messages: MessagesSelect<false> | MessagesSelect<true>;
+    transactions: TransactionsSelect<false> | TransactionsSelect<true>;
     'payload-mcp-api-keys': PayloadMcpApiKeysSelect<false> | PayloadMcpApiKeysSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -144,11 +154,11 @@ export interface PayloadMcpApiKeyAuthOperations {
  */
 export interface User {
   id: string;
-  name: string;
+  name?: string | null;
   /**
-   * Select the user role
+   * Select the user role. Only admins can change this.
    */
-  role: 'mentor' | 'mentee';
+  role?: ('admin' | 'mentor' | 'mentee') | null;
   updatedAt: string;
   createdAt: string;
   email: string;
@@ -188,6 +198,351 @@ export interface Media {
   focalY?: number | null;
 }
 /**
+ * Mentor profiles — people studying or living abroad who guide prospective students.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "mentors".
+ */
+export interface Mentor {
+  id: string;
+  /**
+   * The user account that owns this mentor profile.
+   */
+  user: string | User;
+  /**
+   * Profile photo shown on the discovery page.
+   */
+  profileImage?: (string | null) | Media;
+  /**
+   * Admin-verified mentor badge.
+   */
+  isVerified?: boolean | null;
+  /**
+   * Toggle availability for new bookings.
+   */
+  isAvailable?: boolean | null;
+  /**
+   * Short headline, e.g. "MS Computer Science @ MIT — Living in USA since 2020".
+   */
+  headline: string;
+  /**
+   * Tell students about your journey abroad.
+   */
+  bio?: string | null;
+  /**
+   * Country where you are currently studying or living.
+   */
+  country:
+    | 'usa'
+    | 'uk'
+    | 'canada'
+    | 'australia'
+    | 'germany'
+    | 'france'
+    | 'netherlands'
+    | 'sweden'
+    | 'japan'
+    | 'south_korea'
+    | 'ireland'
+    | 'new_zealand'
+    | 'singapore'
+    | 'malaysia'
+    | 'italy'
+    | 'spain'
+    | 'switzerland'
+    | 'finland'
+    | 'denmark'
+    | 'norway'
+    | 'other';
+  city?: string | null;
+  /**
+   * University/institution you attend(ed).
+   */
+  university?: string | null;
+  /**
+   * Your current or completed degree level.
+   */
+  degree: 'bachelor' | 'master' | 'phd' | 'postdoc' | 'working' | 'language';
+  /**
+   * Your field or major.
+   */
+  fieldOfStudy?: string | null;
+  /**
+   * How many years you have been living abroad.
+   */
+  yearsAbroad?: number | null;
+  /**
+   * Services you offer to help students.
+   */
+  services?:
+    | (
+        | 'university_selection'
+        | 'application_review'
+        | 'sop_review'
+        | 'visa_guidance'
+        | 'scholarship'
+        | 'interview_prep'
+        | 'accommodation'
+        | 'lifestyle_guide'
+        | 'job_guidance'
+        | 'language_test'
+      )[]
+    | null;
+  languages?:
+    | {
+        language: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Offer a free 15-min intro call for new students.
+   */
+  introCallFree?: boolean | null;
+  /**
+   * Session rate in USD per hour. Set 0 for free mentoring.
+   */
+  hourlyRate?: number | null;
+  /**
+   * Session lengths you are willing to offer.
+   */
+  sessionDurations?: ('30' | '45' | '60' | '90')[] | null;
+  /**
+   * IANA timezone string used for scheduling.
+   */
+  timezone?: string | null;
+  /**
+   * Days of the week when you typically take sessions.
+   */
+  availableDays?: ('mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun')[] | null;
+  /**
+   * Cap on weekly bookings to prevent overload.
+   */
+  maxSessionsPerWeek?: number | null;
+  linkedin?: string | null;
+  youtube?: string | null;
+  instagram?: string | null;
+  website?: string | null;
+  /**
+   * Incremented automatically when a session is marked complete.
+   */
+  totalSessions?: number | null;
+  /**
+   * Cumulative net earnings in USD after platform fees.
+   */
+  totalEarningsUSD?: number | null;
+  /**
+   * Average star rating (0–5). Recomputed on each new review.
+   */
+  rating?: number | null;
+  /**
+   * Total number of reviews received.
+   */
+  reviewCount?: number | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Student profiles — people who want to study abroad, linked via the user relationship.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "mentees".
+ */
+export interface Mentee {
+  id: string;
+  /**
+   * The user account that owns this student profile.
+   */
+  user: string | User;
+  /**
+   * Profile photo.
+   */
+  profileImage?: (string | null) | Media;
+  /**
+   * Short bio — tell mentors about yourself and your study abroad plans.
+   */
+  bio?: string | null;
+  /**
+   * Your current education level.
+   */
+  currentEducation: 'high_school' | 'bachelor' | 'master' | 'working';
+  /**
+   * The degree level you want to pursue abroad.
+   */
+  targetDegree: 'bachelor' | 'master' | 'phd' | 'language' | 'foundation' | 'diploma';
+  /**
+   * The field or subject you want to study.
+   */
+  fieldOfInterest?: string | null;
+  /**
+   * Countries you are considering for study abroad.
+   */
+  targetCountry?:
+    | (
+        | 'usa'
+        | 'uk'
+        | 'canada'
+        | 'australia'
+        | 'germany'
+        | 'france'
+        | 'netherlands'
+        | 'sweden'
+        | 'japan'
+        | 'south_korea'
+        | 'ireland'
+        | 'new_zealand'
+        | 'singapore'
+        | 'malaysia'
+        | 'italy'
+        | 'spain'
+        | 'switzerland'
+        | 'finland'
+        | 'denmark'
+        | 'norway'
+        | 'other'
+      )[]
+    | null;
+  /**
+   * When do you plan to start studying abroad?
+   */
+  targetIntake?: string | null;
+  /**
+   * Your English language proficiency.
+   */
+  englishProficiency?:
+    | (
+        | 'native'
+        | 'advanced'
+        | 'intermediate'
+        | 'basic'
+        | 'preparing_ielts'
+        | 'preparing_toefl'
+        | 'has_ielts'
+        | 'has_toefl'
+      )
+    | null;
+  /**
+   * Annual tuition budget range.
+   */
+  budgetRange?: ('full_scholarship' | 'under_10k' | '10k_25k' | '25k_50k' | 'over_50k' | 'flexible') | null;
+  languages?:
+    | {
+        language: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * What kind of help are you looking for?
+   */
+  helpNeeded?:
+    | (
+        | 'university_selection'
+        | 'application_review'
+        | 'sop_review'
+        | 'visa_guidance'
+        | 'scholarship'
+        | 'interview_prep'
+        | 'accommodation'
+        | 'lifestyle_guide'
+        | 'job_guidance'
+        | 'language_test'
+      )[]
+    | null;
+  /**
+   * Specific goals you want to achieve.
+   */
+  goals?:
+    | {
+        goal: string;
+        /**
+         * Optional target completion date.
+         */
+        targetDate?: string | null;
+        completed?: boolean | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * IANA timezone string used for scheduling.
+   */
+  timezone?: string | null;
+  linkedin?: string | null;
+  facebook?: string | null;
+  /**
+   * Incremented automatically when a session is marked complete.
+   */
+  totalSessions?: number | null;
+  /**
+   * Total hours spent in completed sessions.
+   */
+  totalHoursLearned?: number | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "sessions".
+ */
+export interface Session {
+  id: string;
+  mentor: string | Mentor;
+  mentee: string | Mentee;
+  mentorUser: string | User;
+  menteeUser: string | User;
+  topic: string;
+  description?: string | null;
+  scheduledAt: string;
+  /**
+   * Duration in minutes
+   */
+  duration: number;
+  status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
+  /**
+   * Rate snapshot at booking time (USD)
+   */
+  hourlyRate: number;
+  /**
+   * Total charged to mentee (USD)
+   */
+  amountCharged: number;
+  paymentStatus?: ('paid' | 'pending' | 'refunded') | null;
+  meetingLink?: string | null;
+  notes?: string | null;
+  rating?: number | null;
+  review?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "messages".
+ */
+export interface Message {
+  id: string;
+  session: string | Session;
+  sender: string | User;
+  senderName: string;
+  content: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "transactions".
+ */
+export interface Transaction {
+  id: string;
+  session: string | Session;
+  mentorUser: string | User;
+  menteeUser: string | User;
+  type: 'payment' | 'payout' | 'refund';
+  grossAmount: number;
+  platformFee: number;
+  netAmount: number;
+  status: 'pending' | 'completed' | 'refunded';
+  updatedAt: string;
+  createdAt: string;
+}
+/**
  * API keys control which collections, resources, tools, and prompts MCP clients can access
  *
  * This interface was referenced by `Config`'s JSON-Schema
@@ -225,6 +580,42 @@ export interface PayloadMcpApiKey {
      */
     delete?: boolean | null;
   };
+  mentors?: {
+    /**
+     * Allow clients to find mentors.
+     */
+    find?: boolean | null;
+    /**
+     * Allow clients to create mentors.
+     */
+    create?: boolean | null;
+    /**
+     * Allow clients to update mentors.
+     */
+    update?: boolean | null;
+    /**
+     * Allow clients to delete mentors.
+     */
+    delete?: boolean | null;
+  };
+  mentees?: {
+    /**
+     * Allow clients to find mentees.
+     */
+    find?: boolean | null;
+    /**
+     * Allow clients to create mentees.
+     */
+    create?: boolean | null;
+    /**
+     * Allow clients to update mentees.
+     */
+    update?: boolean | null;
+    /**
+     * Allow clients to delete mentees.
+     */
+    delete?: boolean | null;
+  };
   media?: {
     /**
      * Allow clients to find media.
@@ -245,13 +636,13 @@ export interface PayloadMcpApiKey {
   };
   'payload-mcp-tool'?: {
     /**
-     * List the first 20 users with the mentor role, returning their id, name, and email.
+     * List mentor profiles with their headline, category, hourlyRate, rating, and skills.
      */
-    getMentors?: boolean | null;
+    getMentorProfiles?: boolean | null;
     /**
-     * List the first 20 users with the mentee role, returning their id, name, and email.
+     * List mentee profiles with their target role, experience level, and learning goals.
      */
-    getMentees?: boolean | null;
+    getMenteeProfiles?: boolean | null;
   };
   updatedAt: string;
   createdAt: string;
@@ -291,6 +682,26 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'media';
         value: string | Media;
+      } | null)
+    | ({
+        relationTo: 'mentors';
+        value: string | Mentor;
+      } | null)
+    | ({
+        relationTo: 'mentees';
+        value: string | Mentee;
+      } | null)
+    | ({
+        relationTo: 'sessions';
+        value: string | Session;
+      } | null)
+    | ({
+        relationTo: 'messages';
+        value: string | Message;
+      } | null)
+    | ({
+        relationTo: 'transactions';
+        value: string | Transaction;
       } | null)
     | ({
         relationTo: 'payload-mcp-api-keys';
@@ -392,6 +803,137 @@ export interface MediaSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "mentors_select".
+ */
+export interface MentorsSelect<T extends boolean = true> {
+  user?: T;
+  profileImage?: T;
+  isVerified?: T;
+  isAvailable?: T;
+  headline?: T;
+  bio?: T;
+  country?: T;
+  city?: T;
+  university?: T;
+  degree?: T;
+  fieldOfStudy?: T;
+  yearsAbroad?: T;
+  services?: T;
+  languages?:
+    | T
+    | {
+        language?: T;
+        id?: T;
+      };
+  introCallFree?: T;
+  hourlyRate?: T;
+  sessionDurations?: T;
+  timezone?: T;
+  availableDays?: T;
+  maxSessionsPerWeek?: T;
+  linkedin?: T;
+  youtube?: T;
+  instagram?: T;
+  website?: T;
+  totalSessions?: T;
+  totalEarningsUSD?: T;
+  rating?: T;
+  reviewCount?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "mentees_select".
+ */
+export interface MenteesSelect<T extends boolean = true> {
+  user?: T;
+  profileImage?: T;
+  bio?: T;
+  currentEducation?: T;
+  targetDegree?: T;
+  fieldOfInterest?: T;
+  targetCountry?: T;
+  targetIntake?: T;
+  englishProficiency?: T;
+  budgetRange?: T;
+  languages?:
+    | T
+    | {
+        language?: T;
+        id?: T;
+      };
+  helpNeeded?: T;
+  goals?:
+    | T
+    | {
+        goal?: T;
+        targetDate?: T;
+        completed?: T;
+        id?: T;
+      };
+  timezone?: T;
+  linkedin?: T;
+  facebook?: T;
+  totalSessions?: T;
+  totalHoursLearned?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "sessions_select".
+ */
+export interface SessionsSelect<T extends boolean = true> {
+  mentor?: T;
+  mentee?: T;
+  mentorUser?: T;
+  menteeUser?: T;
+  topic?: T;
+  description?: T;
+  scheduledAt?: T;
+  duration?: T;
+  status?: T;
+  hourlyRate?: T;
+  amountCharged?: T;
+  paymentStatus?: T;
+  meetingLink?: T;
+  notes?: T;
+  rating?: T;
+  review?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "messages_select".
+ */
+export interface MessagesSelect<T extends boolean = true> {
+  session?: T;
+  sender?: T;
+  senderName?: T;
+  content?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "transactions_select".
+ */
+export interface TransactionsSelect<T extends boolean = true> {
+  session?: T;
+  mentorUser?: T;
+  menteeUser?: T;
+  type?: T;
+  grossAmount?: T;
+  platformFee?: T;
+  netAmount?: T;
+  status?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-mcp-api-keys_select".
  */
 export interface PayloadMcpApiKeysSelect<T extends boolean = true> {
@@ -399,6 +941,22 @@ export interface PayloadMcpApiKeysSelect<T extends boolean = true> {
   label?: T;
   description?: T;
   users?:
+    | T
+    | {
+        find?: T;
+        create?: T;
+        update?: T;
+        delete?: T;
+      };
+  mentors?:
+    | T
+    | {
+        find?: T;
+        create?: T;
+        update?: T;
+        delete?: T;
+      };
+  mentees?:
     | T
     | {
         find?: T;
@@ -417,8 +975,8 @@ export interface PayloadMcpApiKeysSelect<T extends boolean = true> {
   'payload-mcp-tool'?:
     | T
     | {
-        getMentors?: T;
-        getMentees?: T;
+        getMentorProfiles?: T;
+        getMenteeProfiles?: T;
       };
   updatedAt?: T;
   createdAt?: T;

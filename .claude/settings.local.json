@@ -26,7 +26,16 @@
       "WebFetch(domain:www.npmjs.com)",
       "WebFetch(domain:github.com)",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\(''''dependencies'''',{}\\).get\\(''''zod'''',''''not found''''\\), d.get\\(''''peerDependencies'''',{}\\).get\\(''''zod'''',''''not found''''\\)\\)\")",
-      "Bash(pnpm build:*)"
+      "Bash(pnpm build:*)",
+      "mcp__mongodb__listCollections",
+      "mcp__mongodb__query",
+      "mcp__mongodb__insert",
+      "mcp__mongodb__update",
+      "Bash(mongosh \"$DATABASE_URL\" --eval \"db.user.drop\\(\\)\")",
+      "Bash(mongosh:*)",
+      "Bash(lsof:*)",
+      "Bash(kill -9 786 4065)",
+      "Bash(npm run:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
